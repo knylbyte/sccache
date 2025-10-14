@@ -2283,9 +2283,14 @@ impl OutputsRewriter for RustOutputsRewriter {
                         deps = deps.replace(": ", &format!(":{} ", extra_input_str));
                     }
                     // Write the depinfo file
-                    let f =
-                        fs::File::create(&dep_info).context("Failed to recreate dep info file")?;
-                    { f }.write_all(deps.as_bytes())?;
+                    if let Some(parent) = dep_info.parent() {
+                        fs::create_dir_all(parent).with_context(|| {
+                            format!("Failed to create dep-info directory {}", parent.display())
+                        })?;
+                    }
+                    let mut file = fs::File::create(&dep_info)
+                        .context("Failed to recreate dep info file")?;
+                    file.write_all(deps.as_bytes())?;
                     return Ok(());
                 }
             }
