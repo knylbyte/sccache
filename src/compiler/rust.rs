@@ -1729,6 +1729,25 @@ impl<T: CommandCreatorSync> Compilation<T> for RustCompilation {
 
         trace!("[{}]: compile", crate_name);
 
+        // Ensure all compiler output directories exist before invoking rustc.
+        // Tools like `cargo chef` may run `cargo clean` immediately before the
+        // compile, removing the target directory that rustc will later write
+        // its dependency files into. When that happens rustc fails with
+        // `No such file or directory` while attempting to create the `.d`
+        // dep-info files (see mozilla/sccache#2462). Create the parent
+        // directories eagerly so rustc can emit its outputs without failing.
+        for descriptor in self.outputs.values() {
+            if let Some(parent) = descriptor.path.parent() {
+                fs::create_dir_all(parent).with_context(|| {
+                    format!(
+                        "failed to create parent directory `{}` for output `{}`",
+                        parent.display(),
+                        descriptor.path.display()
+                    )
+                })?;
+            }
+        }
+        
         let command = SingleCompileCommand {
             executable: executable.to_owned(),
             arguments: arguments
