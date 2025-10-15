@@ -211,6 +211,20 @@ impl CacheRead {
                     Some(d) => d,
                     None => bail!("Output file without a parent directory!"),
                 };
+                // Ensure the destination directory exists before creating a
+                // temporary file inside it. This mirrors the behavior of the
+                // compiler drivers which create output directories on demand
+                // (e.g. Cargo for Rust builds). When a build tool runs
+                // `cargo clean` or otherwise removes the target directory in
+                // the same step as invoking the compiler via sccache, the
+                // directory might not exist yet when we service a cache hit.
+                // Without this, creating the temporary file below fails with
+                // `No such file or directory`, which surfaces as rustc being
+                // unable to write its `.d` dep-info files 
+                // (see issue mozilla/sccache#2462).
+                fs::create_dir_all(dir).with_context(|| {
+                    format!("failed to create parent directory `{}`", dir.display())
+                })?;
                 // Write the cache entry to a tempfile and then atomically
                 // move it to its final location so that other rustc invocations
                 // happening in parallel don't see a partially-written file.
